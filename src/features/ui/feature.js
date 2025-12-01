@@ -4,7 +4,7 @@ const {ipcCall,   ipcHandle, ipcCallNoResponse, ipcHandleNoResponse,ipcRegisterB
 const path = require('path')
 const {promises} = require('fs')
 const fs = promises
-
+const os = require('os')
 const Feature = require('../base');
 
  
@@ -44,7 +44,16 @@ class NativeUISupport extends Feature {
     try {
       const win = app.incyclistApp.getWindowManager().getActiveWindow()
       if (win) {
-        win.setFullScreen(!win.isFullScreen());
+
+        if (os.platform() === 'darwin') {
+          // macOS specific full screen toggle
+          win.setSimpleFullScreen(!win.isSimpleFullScreen());
+        }
+        else  {
+          win.setFullScreen(!win.isFullScreen());
+
+        }
+
         res = true;
       }  
     }
