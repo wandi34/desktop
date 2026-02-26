@@ -7,6 +7,9 @@ jest.mock('../utils', ()=> {
             fn() 
         } ),
         ipcCall: jest.fn(),
+        ipcCallSync: jest.fn(),
+        ipcHandleSync: jest.fn(),
+        ipcRegisterBroadcast: jest.fn(),
         ipcResponse: jest.fn()
     }
 })
