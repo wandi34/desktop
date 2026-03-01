@@ -1,6 +1,7 @@
-const request = require( 'request')
+const axios = require( 'axios')
 const fs = require ( 'fs/promises');
 const { EventLogger } = require('gd-eventlog');
+const FormData = require('form-data');
 
 class RequestForm  {
 
@@ -45,50 +46,55 @@ class RequestForm  {
     }
 
     async post (opts) {
+        try {
+            const options = {...opts}
+            const url = opts.url
+            delete options.url
 
-        return new Promise( (resolve,reject) => {
-            try {
-                const options = {...opts}
-                const url = opts.url
-                delete options.url
-
-                request.post(url,options, (err,response,body)=> {
-                    if ( err) {
-                        reject(err)
-                    } 
-                    else {
-
-
-                        let data
-                        try { data = JSON.parse(body) } catch {}
-
-                        if ( response.statusCode<200 || response.statusCode>=300) {
-                            let error = {
-                                response: {
-                                    status: response.statusCode,
-                                    message: response.statusMessage,
-                                    data,
-                                    body
-                                }
-                            }
-                            return reject ( error)
-                        }
-                        let res = {
-                            data,
-                            body,
-                            statusCode: response.statusCode
-                        }
-                        
-                        resolve (res)
+            // Convert formData to axios-compatible format
+            const formData = new FormData();
+            if (options.formData) {
+                for (const [key, value] of Object.entries(options.formData)) {
+                    if (value.value && value.options) {
+                        // Handle file uploads
+                        formData.append(key, value.value, value.options);
+                    } else {
+                        formData.append(key, value);
                     }
-                })
-
+                }
+                delete options.formData;
             }
-            catch (error) {
-                reject(error)
-            }
-        })
 
+            const response = await axios.post(url, formData, {
+                ...options,
+                headers: {
+                    ...options.headers,
+                    ...formData.getHeaders?.()
+                }
+            });
+
+            return {
+                data: response.data,
+                body: JSON.stringify(response.data),
+                statusCode: response.status
+            };
+
+        } catch (error) {
+            if (error.response) {
+                // Axios error with response
+                throw {
+                    response: {
+                        status: error.response.status,
+                        message: error.response.statusText,
+                        data: error.response.data,
+                        body: JSON.stringify(error.response.data)
+                    }
+                };
+            } else {
+                // Other errors
+                throw error;
+            }
+        }
     }
 
 

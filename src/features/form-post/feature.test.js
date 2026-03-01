@@ -17,8 +17,8 @@ jest.mock('electron', () => ({ ipcMain: { handle: jest.fn(), on: jest.fn() } }))
 jest.mock('../utils',  () => ({ ipcCall: jest.fn(), ipcHandle: jest.fn() }))
 
 // ── HTTP boundary mock ───────────────────────────────────────────────────────
-jest.mock('request')
-const request = require('request')
+jest.mock('axios')
+const axios = require('axios')
 
 // ── Filesystem boundary mock ─────────────────────────────────────────────────
 jest.mock('fs/promises')
@@ -30,25 +30,33 @@ const FormPostFeature = require('./feature')
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-/** Simulate a successful request.post() callback */
+/** Simulate a successful axios.post() response */
 const mockHttpSuccess = (body, statusCode = 200) => {
-    request.post.mockImplementation((_url, _opts, cb) =>
-        cb(null, { statusCode, statusMessage: 'OK' }, JSON.stringify(body))
-    )
+    axios.post.mockResolvedValue({
+        data: body,
+        status: statusCode,
+        statusText: 'OK',
+        headers: {},
+        config: {}
+    })
 }
 
-/** Simulate a non-2xx response from request.post() */
+/** Simulate a non-2xx response from axios.post() */
 const mockHttpError = (statusCode, statusMessage, body = {}) => {
-    request.post.mockImplementation((_url, _opts, cb) =>
-        cb(null, { statusCode, statusMessage }, JSON.stringify(body))
-    )
+    axios.post.mockRejectedValue({
+        response: {
+            data: body,
+            status: statusCode,
+            statusText: statusMessage,
+            headers: {},
+            config: {}
+        }
+    })
 }
 
 /** Simulate a network-level failure (ECONNREFUSED etc.) */
 const mockHttpNetworkFailure = (message = 'connect ECONNREFUSED') => {
-    request.post.mockImplementation((_url, _opts, cb) =>
-        cb(new Error(message))
-    )
+    axios.post.mockRejectedValue(new Error(message))
 }
 
 
@@ -150,17 +158,17 @@ describe('FormPostFeature – behaviour against impl-requestlib', () => {
         test('sends the request to the correct URL', async () => {
             mockHttpSuccess({ ok: true })
             await createAndPost()
-            expect(request.post).toHaveBeenCalledWith(
+            expect(axios.post).toHaveBeenCalledWith(
                 'https://example.com/upload',
                 expect.anything(),
-                expect.any(Function)
+                expect.any(Object)
             )
         })
 
         test('does NOT pass url as a field inside the request options', async () => {
             mockHttpSuccess({})
             await createAndPost()
-            const passedOptions = request.post.mock.calls[0][1]
+            const passedOptions = axios.post.mock.calls[0][2]
             expect(passedOptions).not.toHaveProperty('url')
         })
 
@@ -177,12 +185,16 @@ describe('FormPostFeature – behaviour against impl-requestlib', () => {
             })
         })
 
-        test('formData built by createFormRequest is forwarded to request.post', async () => {
+        test('formData built by createFormRequest is forwarded to axios.post', async () => {
             mockHttpSuccess({})
+            const expFormdata = new FormData()
+            expFormdata.append('username', 'bob')
+            expFormdata.append('score', 7)
             await createAndPost({ username: 'bob', score: 7 })
 
-            const passedOptions = request.post.mock.calls[0][1]
-            expect(passedOptions.formData).toMatchObject({ username: 'bob', score: 7 })
+            const resultBody = axios.post.mock.calls[0][1]
+
+            expect(resultBody).toMatchObject(expFormdata)
         })
 
         test('returns { error } with status info on a non-2xx response', async () => {
@@ -227,7 +239,7 @@ describe('FormPostFeature – behaviour against impl-requestlib', () => {
         test('returns { error: "request not found" } for an unknown id', async () => {
             const res = await feature.postRequest({ id: 99999 })
             expect(res.error.message).toBe('request not found')
-            expect(request.post).not.toHaveBeenCalled()
+            expect(axios.post).not.toHaveBeenCalled()
         })
 
         test('second post with the same id returns "request not found"', async () => {
